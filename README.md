@@ -73,7 +73,7 @@ jscodeshift -t react-codemod/transforms/pure-render-mixin.js <path>
 
 #### `react-to-react-dom`
 
-Updates code for the split of the `react` and `react-dom` packages (e.g.,
+Updates code for the [split of the `react` and `react-dom`][1] packages (e.g.,
 `React.render` to `ReactDOM.render`). It looks for `require('react')` and
 replaces the appropriate property accesses using `require('react-dom')`. It does
 not support ES6 modules or other non-CommonJS systems. We recommend performing
@@ -154,3 +154,5 @@ through the `printOptions` command line argument
 ```sh
 jscodeshift -t transform.js <path> --printOptions='{"quote":"double"}'
 ```
+
+[1]: https://facebook.github.io/react/blog/2015/10/07/react-v0.14.html#major-changes
