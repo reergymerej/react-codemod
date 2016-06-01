@@ -54,31 +54,34 @@ function isRequire(path, moduleName) {
   );
 }
 
+function hasOnlyCoreProps(nodePath) {
+  const pattern = nodePath.parent.value.id;
+  return pattern.properties.every(function(prop) {
+    return (prop.key.type === 'Identifier')
+      && CORE_PROPERTIES.indexOf(name) !== -1;
+  });
+}
+
 function getCoreRequireDeclarator(nodePath) {
   let coreRequireDeclarator;
+  const { parent: parentNodePath } = nodePath;
+  const { node: parentNode } = parentNodePath;
 
-  if (nodePath.parent.value.type === 'VariableDeclarator') {
-    if (nodePath.parent.value.id.type === 'ObjectPattern') {
-      var pattern = nodePath.parent.value.id;
-      var all = pattern.properties.every(function(prop) {
-        return (prop.key.type === 'Identifier')
-          && CORE_PROPERTIES.indexOf(name) !== -1;
-      });
-
-      if (all) {
-        // var {PropTypes} = require('React'); so leave alone
+  if (parentNode.type === 'VariableDeclarator') {
+    if (parentNode.id.type === 'ObjectPattern') {
+      if (hasOnlyCoreProps(nodePath)) {
         return coreRequireDeclarator;
       }
     }
 
-    coreRequireDeclarator = nodePath.parent;
+    coreRequireDeclarator = parentNodePath;
 
-  } else if (nodePath.parent.value.type === 'AssignmentExpression') {
-
-    const name = nodePath.parent.value.left.name;
+  } else if (parentNode.type === 'AssignmentExpression') {
+    const name = parentNode.left.name;
     const scope = nodePath.scope.lookup(name);
     const reactBindings = scope.getBindings()[name];
-    coreRequireDeclarator = reactBindings[0].parent;
+
+    coreRequireDeclarator = reactBindings[0].parentNodePath;
   }
 
   return coreRequireDeclarator;
@@ -90,6 +93,61 @@ function getNameForCoreAssignmentExpression(nodePath) {
 
 function getNameForCoreVariableDeclarator(nodePath) {
   return nodePath.parent.value.id.name;
+}
+
+/**
+* @return {coreRequireDeclarator, domAlreadyDeclared, domServerAlreadyDeclared}
+*/
+function getDataFromVariableDeclarator(nodePath, file) {
+  const data = {};
+
+  const { parent: parentNodePath } = nodePath;
+  const { node: parentNode } = parentNodePath;
+
+  if (parentNode.id.type === 'ObjectPattern' && hasOnlyCoreProps(nodePath)) {
+    return;
+  } else {
+    const name = getNameForCoreVariableDeclarator(nodePath);
+    const scope = nodePath.scope.lookup(name);
+
+    data.coreRequireDeclarator = getCoreRequireDeclarator(nodePath);
+
+    // 2. get existing declarations to reuse
+    data.domAlreadyDeclared = canReuseDomDeclaration(scope, file);
+    data.domServerAlreadyDeclared = canReuseDomServer(scope, file);
+    
+    return data;
+  }
+}
+
+function getDataFromAssignmentExpression(nodePath, file, coreModuleName) {
+  const data = {};
+
+  // 0. get name and scope
+  const name = getNameForCoreAssignmentExpression(nodePath);
+  const scope = nodePath.scope.lookup(name);
+
+  var reactBindings = scope.getBindings()[name];
+  if (reactBindings.length !== 1) {
+    throw new Error(
+      'Unexpected number of bindings: ' + reactBindings.length
+    );
+  }
+
+  // 1. find core require declarator
+  data.coreRequireDeclarator = getCoreRequireDeclarator(nodePath);
+
+  if (data.coreRequireDeclarator.value.init &&
+      !isRequire(data.coreRequireDeclarator.get('init'), coreModuleName)) {
+    reportError(
+      data.coreRequireDeclarator.value,
+      'Unexpected initialization of ' + coreModuleName
+    );
+  }
+
+  // 2. get existing declarations to reuse
+  data.domAlreadyDeclared = canReuseDomDeclaration(scope, file);
+  data.domServerAlreadyDeclared = canReuseDomServer(scope, file);
 }
 
 function canReuseDomDeclaration(scope, file) {
@@ -130,84 +188,47 @@ module.exports = function(file, api) {
       .filter(p => isRequire(p, coreModuleName))
       .forEach(p => {
 
+        const { parent: parentNodePath } = p;
+        const { node: parentNode } = parentNodePath;
 
-        var name, scope;
-        if (p.parent.value.type === 'VariableDeclarator') {
-          if (p.parent.value.id.type === 'ObjectPattern') {
-            var pattern = p.parent.value.id;
-            var all = pattern.properties.every(function(prop) {
-              if (prop.key.type === 'Identifier') {
-                name = prop.key.name;
-                return CORE_PROPERTIES.indexOf(name) !== -1;
-              }
-              return false;
-            });
-
-            if (all) {
-              // var {PropTypes} = require('React'); so leave alone
-              return;
+        if (parentNode.type === 'VariableDeclarator') {
+          const data = getDataFromVariableDeclarator(p, file);
+          if (!data) {
+            return;
+          } else {
+            // check for errors ----------
+            if (coreRequireDeclarator) {
+              reportError(
+                p.value,
+                'Multiple declarations of React'
+              );
             }
+
+            if (parentNode.id.type !== 'Identifier') {
+              reportError(
+                p.value,
+                'Unexpected destructuring in require of ' + coreModuleName
+              );
+            }
+
+            coreRequireDeclarator = data.coreRequireDeclarator;
+            domAlreadyDeclared = data.domAlreadyDeclared;
+            domServerAlreadyDeclared = data.domServerAlreadyDeclared;
           }
 
-          // check for errors ----------
-          if (coreRequireDeclarator) {
-            reportError(
-              p.value,
-              'Multiple declarations of React'
-            );
-          }
-
-          if (p.parent.value.id.type !== 'Identifier') {
-            reportError(
-              p.value,
-              'Unexpected destructuring in require of ' + coreModuleName
-            );
-          }
-
-          // 0. get name and scope
-          name = getNameForCoreVariableDeclarator(p);
-          scope = p.scope.lookup(name);
-
-          // 1. find core require declarator
-          coreRequireDeclarator = getCoreRequireDeclarator(p);
-
-          // 2. get existing declarations to reuse
-          domAlreadyDeclared = canReuseDomDeclaration(scope, file);
-          domServerAlreadyDeclared = canReuseDomServer(scope, file);
-
-        } else if (p.parent.value.type === 'AssignmentExpression') {
-          if (p.parent.value.left.type !== 'Identifier') {
+        } else if (parentNode.type === 'AssignmentExpression') {
+          if (parentNode.left.type !== 'Identifier') {
             reportError(
               p.value,
               'Unexpected destructuring in require of ' + coreModuleName
             );
           }
 
-          // 0. get name and scope
-          name = getNameForCoreAssignmentExpression(p);
-          scope = p.scope.lookup(name);
+          const data = getDataFromAssignmentExpression(p, coreModuleName);
 
-          var reactBindings = scope.getBindings()[name];
-          if (reactBindings.length !== 1) {
-            throw new Error(
-              'Unexpected number of bindings: ' + reactBindings.length
-            );
-          }
-
-          // 1. find core require declarator
-          coreRequireDeclarator = getCoreRequireDeclarator(p);
-
-          if (coreRequireDeclarator.value.init &&
-              !isRequire(coreRequireDeclarator.get('init'), coreModuleName)) {
-            reportError(
-              coreRequireDeclarator.value,
-              'Unexpected initialization of ' + coreModuleName
-            );
-          }
-
-          // 2. get existing declarations to reuse
-          domAlreadyDeclared = canReuseDomDeclaration(scope, file);
-          domServerAlreadyDeclared = canReuseDomServer(scope, file);
+          coreRequireDeclarator = data.coreRequireDeclarator;
+          domAlreadyDeclared = data.domAlreadyDeclared;
+          domServerAlreadyDeclared = data.domServerAlreadyDeclared;
         }
       });
 
