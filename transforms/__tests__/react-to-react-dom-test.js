@@ -12,3 +12,4 @@
 
 const defineTest = require('jscodeshift/dist/testUtils').defineTest;
 defineTest(__dirname, 'react-to-react-dom');
+defineTest(__dirname, 'react-to-react-dom', null, 'react-to-react-dom2');
