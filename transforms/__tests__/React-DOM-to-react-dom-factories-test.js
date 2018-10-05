@@ -11,13 +11,14 @@
 'use strict';
 
 const tests = [
-  'react-dom-basic-case',
-  'react-dom-deconstructed-import',
-  'react-dom-deconstructed-require',
-  'react-dom-deconstructed-require-part-two',
-  'react-dom-no-change-import',
-  'react-dom-no-change-require',
-  'react-dom-no-change-dom-from-other-libraries',
+  // 'react-dom-basic-case',
+  // 'react-dom-deconstructed-import',
+  // 'react-dom-deconstructed-require',
+  // 'react-dom-deconstructed-require-part-two',
+  'react-dom-issue-197',
+  // 'react-dom-no-change-import',
+  // 'react-dom-no-change-require',
+  // 'react-dom-no-change-dom-from-other-libraries',
 ];
 
 const defineTest = require('jscodeshift/dist/testUtils').defineTest;

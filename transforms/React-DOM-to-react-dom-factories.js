@@ -56,6 +56,8 @@ module.exports = function(file, api, options) {
         );
       });
 
+    console.log('hasModifications', hasModifications)
+
     //---------
     // Next update require statments.
     // This matches both
@@ -99,6 +101,7 @@ module.exports = function(file, api, options) {
           }
         });
       });
+    console.log('hasModifications', hasModifications)
     return hasModifications;
   };
 
@@ -168,6 +171,7 @@ module.exports = function(file, api, options) {
       .find(j.Identifier)
       .filter(isReactDOMIdentifier)
       .forEach(path => {
+        // TODO: I think isReactDOMIdentifier is not working for this scenario.
         hasModifications = true;
         const DOMargs = path.parent.parent.parent.node.arguments;
         const DOMFactoryPath = path.parent.parent.node.property;
